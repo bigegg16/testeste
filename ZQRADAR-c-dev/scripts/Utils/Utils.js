@@ -37,6 +37,102 @@ import { Settings } from './Settings.js';
 const settings = new Settings();
 
 
+const PACKET_HISTORY_LIMIT = 250;
+const packetHistory = [];
+const eventCodeLookup = Object.entries(EventCodes).reduce((accumulator, entry) =>
+{
+    const key = entry[0];
+    const value = entry[1];
+
+    accumulator[value] = key;
+
+    return accumulator;
+}, {});
+
+function recordPacketEntry(channel, dictionary)
+{
+    const payload = dictionary && typeof dictionary === "object" ? (dictionary.parameters ?? dictionary) : undefined;
+    const timestamp = Date.now();
+
+    let eventCode = null;
+    let entityId = null;
+
+    if (channel === "event" && Array.isArray(payload))
+    {
+        eventCode = payload[252];
+        entityId = payload[0];
+    }
+
+    packetHistory.push({
+        timestamp: timestamp,
+        channel: channel,
+        eventCode: eventCode,
+        eventName: eventCode != null ? (eventCodeLookup[eventCode] ?? null) : null,
+        entityId: entityId,
+        parameters: payload,
+    });
+
+    if (packetHistory.length > PACKET_HISTORY_LIMIT)
+        packetHistory.shift();
+}
+
+function logPacketHistory()
+{
+    console.groupCollapsed(`[Radar] Last ${packetHistory.length} packets`);
+
+    if (packetHistory.length === 0)
+    {
+        console.info("No packets captured yet.");
+        console.groupEnd();
+
+        return;
+    }
+
+    const summary = packetHistory.map((entry, index) =>
+    {
+        return {
+            index: index + 1,
+            time: new Date(entry.timestamp).toLocaleTimeString(),
+            channel: entry.channel,
+            eventCode: entry.eventCode ?? "",
+            eventName: entry.eventName ?? "",
+            entityId: entry.entityId ?? "",
+        };
+    });
+
+    console.table(summary);
+
+    for (const entry of packetHistory)
+    {
+        const labelParts = [];
+
+        labelParts.push(`[${new Date(entry.timestamp).toLocaleTimeString()}]`);
+        labelParts.push(entry.channel);
+
+        if (entry.eventName)
+            labelParts.push(entry.eventName);
+        else if (entry.eventCode != null)
+            labelParts.push(`Code ${entry.eventCode}`);
+
+        if (entry.entityId != null)
+            labelParts.push(`ID ${entry.entityId}`);
+
+        console.groupCollapsed(labelParts.join(" · "));
+        console.log(entry.parameters);
+        console.groupEnd();
+    }
+
+    console.groupEnd();
+}
+
+if (typeof window !== "undefined")
+{
+    window.radarDebug = window.radarDebug || {};
+    window.radarDebug.logPacketHistory = logPacketHistory;
+    window.radarDebug.getPacketHistory = () => [...packetHistory];
+}
+
+
 
 const harvestablesDrawing = new HarvestablesDrawing(settings);
 const dungeonsHandler = new DungeonsHandler(settings);
@@ -83,7 +179,12 @@ drawingUtils.InitOurPlayerCanvas(canvasOurPlayer, contextOurPlayer);
 
 
 const socket = new WebSocket('ws://localhost:5002');
-      
+
+const logPacketHistoryButton = document.getElementById("logPacketHistory");
+
+if (logPacketHistoryButton)
+    logPacketHistoryButton.addEventListener("click", () => logPacketHistory());
+
 socket.addEventListener('open', (event) => {
   console.log('Connected to the WebSocket server.');
 
@@ -96,6 +197,8 @@ socket.addEventListener('message', (event) => {
   var extractedString = data.code;
 
   var extractedDictionary = JSON.parse(data.dictionary);
+
+  recordPacketEntry(extractedString, extractedDictionary);
 
   switch (extractedString)
   {

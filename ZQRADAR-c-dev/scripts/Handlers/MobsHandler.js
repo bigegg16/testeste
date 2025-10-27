@@ -174,16 +174,38 @@ class MobsHandler
             return;
 
         const h = new Mob(id, typeId, posX, posY, health, enchant, rarity);
+        const prefabInfo = this.extractMobPrefabInfo(parameters);
 
         // TODO
         // List of enemies
-        if (this.mobinfo[typeId] != null)
-        {
-            const mobsInfo = this.mobinfo[typeId];
+ codex/review-radar-code-functionality-0hwu8q
+        const hasKnownMobInfo = this.mobinfo[typeId] != null;
+        const resolvedMetadata = this.resolveMobMetadata(typeId, prefabInfo);
 
-            h.tier = mobsInfo[0];
-            h.type = mobsInfo[1];
-            h.name = mobsInfo[2];
+        if (resolvedMetadata.type != null)
+            h.type = resolvedMetadata.type;
+
+        if (resolvedMetadata.name != null)
+            h.name = resolvedMetadata.name;
+
+        if (resolvedMetadata.tier != null)
+            h.tier = resolvedMetadata.tier;
+
+        if (hasKnownMobInfo && this.isLivingMobType(h.type) && typeId == 397 && h.tier == 5 && rarity <= 1)
+
+        if (this.mobinfo[typeId] != null)
+main
+        {
+            h.tier = 1;
+        }
+
+        const isLiving = this.isLivingMob(h);
+
+ codex/review-radar-code-functionality-0hwu8q
+        if (isLiving)
+        {
+            const fallbackEnchant = Math.max(0, h.rarity - 1);
+            const normalizedFallback = this.normalizeEnchant(fallbackEnchant);
 
             if (h.type == EnemyType.LivingSkinnable || h.type == EnemyType.LivingHarvestable)
             {
@@ -246,9 +268,61 @@ class MobsHandler
             else if (h.type >= EnemyType.Enemy && h.type <= EnemyType.Boss)
             {
                 const offset = EnemyType.Enemy;
+ main
 
-                if (!this.settings.enemyLevels[h.type - offset])
-                    return;
+            if (normalizedFallback > h.enchantmentLevel)
+                h.enchantmentLevel = normalizedFallback;
+
+codex/review-radar-code-functionality-0hwu8q
+            if (prefabInfo.tier != null)
+                h.tier = prefabInfo.tier;
+
+            if (prefabInfo.resourceName != null)
+                h.name = this.normalizeLivingResourceName(prefabInfo.resourceName, h.type);
+
+            h.tier = this.normalizeTier(h.tier);
+            h.enchantmentLevel = this.normalizeEnchant(h.enchantmentLevel);
+
+            if (!this.shouldDisplayLivingMob(h))
+            {
+                this.harvestablesNotGood.push(h);
+                return;
+            }
+        }
+        else if (h.type >= EnemyType.Enemy && h.type <= EnemyType.Boss)
+        {
+            if (!hasKnownMobInfo && !this.settings.showUnmanagedEnemies)
+                return;
+
+            const offset = EnemyType.Enemy;
+
+            if (!this.settings.enemyLevels[h.type - offset])
+                return;
+
+            if (this.settings.showMinimumHealthEnemies && health < this.getMinimumHealthThreshold())
+                return;
+        }
+        else if (h.type == EnemyType.Drone)
+        {
+            if (!this.settings.avaloneDrones) return;
+        }
+        else if (h.type == EnemyType.MistBoss)
+        {
+            if (h.name == "CRYSTALSPIDER" && !this.settings.bossCrystalSpider) return;
+            else if (h.name == "FAIRYDRAGON" && !this.settings.settingBossFairyDragon) return;
+            else if (h.name == "VEILWEAVER" && !this.settings.bossVeilWeaver) return;
+            else if (h.name == "GRIFFIN" && !this.settings.bossGriffin) return;
+        }
+        else if (h.type == EnemyType.Events)
+        {
+            if (!this.settings.showEventEnemies) return;
+        }
+        else if (!hasKnownMobInfo && !this.settings.showUnmanagedEnemies) return;
+        else
+        {
+            if (this.settings.showMinimumHealthEnemies && health < this.getMinimumHealthThreshold())
+                return;
+        }
 
                 if (this.settings.showMinimumHealthEnemies && health < this.getMinimumHealthThreshold())
                     return;
@@ -285,6 +359,13 @@ class MobsHandler
 
         h.enchantmentLevel = this.normalizeEnchant(h.enchantmentLevel);
         h.tier = this.normalizeTier(h.tier);
+ main
+
+        if (!isLiving)
+        {
+            h.enchantmentLevel = this.normalizeEnchant(h.enchantmentLevel);
+            h.tier = this.normalizeTier(h.tier);
+        }
 
         this.mobsList.push(h);
     }
@@ -497,6 +578,33 @@ class MobsHandler
         }
     }
 
+codex/review-radar-code-functionality-0hwu8q
+    normalizeLivingResourceName(name, type)
+    {
+        if (type === EnemyType.LivingSkinnable)
+            return "hide";
+
+        const lowered = typeof name === "string" ? name.toLowerCase() : "";
+
+        if (/(fiber|cotton|silk|flax|hemp|linen)/.test(lowered))
+            return "fiber";
+
+        if (/(wood|log|tree|timber)/.test(lowered))
+            return "logs";
+
+        if (/(ore|metal|ingot|bar|vein)/.test(lowered))
+            return "ore";
+
+        if (/(rock|stone|basalt|boulder|marble)/.test(lowered))
+            return "rock";
+
+        if (lowered === "hide")
+            return "hide";
+
+        return type === EnemyType.LivingHarvestable ? "fiber" : "hide";
+    }
+
+ main
     shouldDisplayLivingMob(mob)
     {
         const enchantLevel = this.normalizeEnchant(mob.enchantmentLevel);
@@ -516,6 +624,13 @@ class MobsHandler
             switch (resourceName)
             {
                 case "fiber":
+ codex/review-radar-code-functionality-0hwu8q
+                case "cotton":
+                case "silk":
+                case "flax":
+                case "hemp":
+                case "linen":
+ main
                     matrix = this.settings.harvestingLivingFiber?.[enchantKey];
                     break;
                 case "hide":
@@ -523,12 +638,30 @@ class MobsHandler
                     break;
                 case "logs":
                 case "log":
+ codex/review-radar-code-functionality-0hwu8q
+                case "wood":
+                case "tree":
+                case "timber":
+                    matrix = this.settings.harvestingLivingWood?.[enchantKey];
+                    break;
+                case "ore":
+                case "metal":
+                case "ingot":
+                case "bar":
+                    matrix = this.settings.harvestingLivingOre?.[enchantKey];
+                    break;
+                case "rock":
+                case "stone":
+                case "basalt":
+                case "boulder":
+
                     matrix = this.settings.harvestingLivingWood?.[enchantKey];
                     break;
                 case "ore":
                     matrix = this.settings.harvestingLivingOre?.[enchantKey];
                     break;
                 case "rock":
+ main
                     matrix = this.settings.harvestingLivingRock?.[enchantKey];
                     break;
                 default:
@@ -548,6 +681,13 @@ class MobsHandler
         return mob.type === EnemyType.LivingSkinnable || mob.type === EnemyType.LivingHarvestable;
     }
 
+ codex/review-radar-code-functionality-0hwu8q
+    isLivingMobType(type)
+    {
+        return type === EnemyType.LivingSkinnable || type === EnemyType.LivingHarvestable;
+    }
+
+ main
     normalizeEnchant(value)
     {
         const numeric = Number(value);
@@ -653,5 +793,153 @@ class MobsHandler
 
         this.mobsList = nonLivingMobs.concat(visibleLiving);
         this.harvestablesNotGood = hiddenLiving;
+ codex/review-radar-code-functionality-0hwu8q
+    }
+
+    extractMobPrefabInfo(parameters)
+    {
+        const info = {
+            tier: null,
+            resourceName: null,
+            type: null,
+        };
+
+        const stack = [parameters];
+        const visited = new Set();
+
+        while (stack.length > 0)
+        {
+            const current = stack.pop();
+
+            if (current === null || current === undefined)
+                continue;
+
+            if (typeof current === "string")
+            {
+                this.updatePrefabInfoFromString(current, info);
+                continue;
+            }
+
+            if (typeof current !== "object")
+                continue;
+
+            if (visited.has(current))
+                continue;
+
+            visited.add(current);
+
+            if (Array.isArray(current))
+            {
+                for (const value of current)
+                    stack.push(value);
+                continue;
+            }
+
+            if (typeof ArrayBuffer !== "undefined")
+            {
+                if (current instanceof ArrayBuffer)
+                    continue;
+
+                if (typeof ArrayBuffer.isView === "function" && ArrayBuffer.isView(current))
+                    continue;
+            }
+
+            for (const key of Object.keys(current))
+                stack.push(current[key]);
+        }
+
+        if (info.tier != null)
+            info.tier = this.normalizeTier(info.tier);
+
+        return info;
+    }
+
+    updatePrefabInfoFromString(text, info)
+    {
+        if (typeof text !== "string" || text.length === 0)
+            return;
+
+        if (info.tier == null)
+        {
+            const tierMatch = text.match(/T([1-8])_/i);
+
+            if (tierMatch)
+                info.tier = parseInt(tierMatch[1], 10);
+        }
+
+        const lowered = text.toLowerCase();
+
+        if (info.resourceName == null)
+        {
+            if (/(hide|skin|pelt|fur|leather)/.test(lowered))
+                info.resourceName = "hide";
+            else if (/(fiber|cotton|silk|flax|hemp|linen)/.test(lowered))
+                info.resourceName = "fiber";
+            else if (/(wood|log|tree|timber)/.test(lowered))
+                info.resourceName = "logs";
+            else if (/(ore|metal|ingot|bar|vein)/.test(lowered))
+                info.resourceName = "ore";
+            else if (/(rock|stone|basalt|boulder|marble)/.test(lowered))
+                info.resourceName = "rock";
+        }
+
+        if (info.type == null)
+        {
+            if (lowered.includes("mob_treasure"))
+            {
+                info.type = EnemyType.LivingSkinnable;
+
+                if (info.resourceName == null)
+                    info.resourceName = "hide";
+            }
+            else if (lowered.includes("critter_hide"))
+            {
+                info.type = EnemyType.LivingSkinnable;
+            }
+            else if (lowered.includes("critter_") || lowered.includes("livingresource"))
+            {
+                info.type = info.resourceName === "hide" ? EnemyType.LivingSkinnable : EnemyType.LivingHarvestable;
+            }
+        }
+
+        if (info.type == null && info.resourceName != null)
+            info.type = info.resourceName === "hide" ? EnemyType.LivingSkinnable : EnemyType.LivingHarvestable;
+    }
+
+    resolveMobMetadata(typeId, prefabInfo)
+    {
+        const info = this.mobinfo[typeId];
+        const metadata = {
+            tier: info ? info[0] : null,
+            type: info ? info[1] : null,
+            name: info ? info[2] : null,
+        };
+
+        if (prefabInfo.type != null)
+        {
+            if (metadata.type == null || (this.isLivingMobType(prefabInfo.type) && !this.isLivingMobType(metadata.type)))
+                metadata.type = prefabInfo.type;
+        }
+
+        if (prefabInfo.resourceName != null)
+        {
+            if (metadata.type == null || this.isLivingMobType(metadata.type))
+                metadata.name = prefabInfo.resourceName;
+        }
+
+        if (prefabInfo.tier != null)
+        {
+            if (metadata.type == null || this.isLivingMobType(metadata.type))
+                metadata.tier = prefabInfo.tier;
+        }
+
+        if (this.isLivingMobType(metadata.type))
+            metadata.name = this.normalizeLivingResourceName(metadata.name, metadata.type);
+
+        if (metadata.type == null && metadata.name != null)
+            metadata.type = metadata.name === "hide" ? EnemyType.LivingSkinnable : EnemyType.LivingHarvestable;
+
+        return metadata;
+ main
     }
 }
