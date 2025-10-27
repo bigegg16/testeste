@@ -242,6 +242,19 @@ class HarvestablesHandler
         }
     }
 
+    getHarvestableDebugSnapshot()
+    {
+        return this.harvestableList.map((harvestable) => ({
+            id: harvestable.id,
+            type: this.GetStringType(harvestable.type),
+            tier: harvestable.tier,
+            enchantment: harvestable.charges,
+            size: harvestable.size,
+            posX: harvestable.posX,
+            posY: harvestable.posY,
+        }));
+    }
+
     GetStringType(typeNumber)
     {
         if (typeNumber >= 0 && typeNumber <= 5)

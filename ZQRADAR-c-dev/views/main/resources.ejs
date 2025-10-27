@@ -841,15 +841,15 @@
 			</div>
 		</div>
 
-		<div class="flex items-start p-4 bg-white rounded-lg shadow-xs dark:bg-gray-800">
-			<div>				
-				<label class="flex items-center space-x-2">
-					<input type="checkbox" id="settingRawSize" class="h-5 w-5 text-indigo-600 border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
-					<span id="size-text" class="dark:text-white ml-4">Show Size</span>
-				</label>
+                <div class="flex items-start p-4 bg-white rounded-lg shadow-xs dark:bg-gray-800">
+                        <div>
+                                <label class="flex items-center space-x-2">
+                                        <input type="checkbox" id="settingRawSize" class="h-5 w-5 text-indigo-600 border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
+                                        <span id="size-text" class="dark:text-white ml-4">Show Size</span>
+                                </label>
 
-				<!-- TODO -->
-				<label class="flex items-center">
+                                <!-- TODO -->
+                                <label class="flex items-center">
                     <input disabled type="checkbox" id="settingLivingResourcesHP" class="h-5 w-5 text-indigo-600 border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
                     <span id="health-text" class="dark:text-white ml-2">Show Hp</span>
                 </label>
@@ -858,18 +858,116 @@
                     <input type="checkbox" id="settingLivingResourcesID" class="h-5 w-5 text-indigo-600 border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500">
                     <span id="id-text" class="dark:text-white ml-2">Show ID</span>
                 </label>
-			</div>
-		</div>
 
-	</div>
+                                <button id="logResourcesDebug" class="mt-6 inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-purple-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                                        Log Resources &amp; Enemies Snapshot
+                                </button>
+                        </div>
+                </div>
+
+        </div>
 </div>
 
 <script>
-	function returnLocalBool(item)
-	{
-		if (localStorage.getItem(item) == "true")
-		{
-			return true;
+        const ENTITY_DEBUG_STORAGE_KEY = "radarEntityDebugSnapshot";
+
+        const logResourcesDebugButton = document.getElementById("logResourcesDebug");
+
+        if (logResourcesDebugButton)
+        {
+                logResourcesDebugButton.addEventListener("click", () =>
+                {
+                        if (window.radarDebug && typeof window.radarDebug.logEntitySnapshot === "function")
+                        {
+                                window.radarDebug.logEntitySnapshot();
+                                return;
+                        }
+
+                        const rawSnapshot = localStorage.getItem(ENTITY_DEBUG_STORAGE_KEY);
+
+                        if (!rawSnapshot)
+                        {
+                                console.warn("[Radar] No entity debug snapshot available yet.");
+                                return;
+                        }
+
+                        let snapshot;
+
+                        try
+                        {
+                                snapshot = JSON.parse(rawSnapshot);
+                        }
+                        catch (error)
+                        {
+                                console.error("[Radar] Failed to parse entity debug snapshot from storage.", error);
+                                return;
+                        }
+
+                        if (!snapshot || typeof snapshot !== "object")
+                        {
+                                console.warn("[Radar] Entity debug snapshot is empty.");
+                                return;
+                        }
+
+                        const timestampLabel = snapshot.timestamp ? new Date(snapshot.timestamp).toLocaleString() : "unknown";
+                        console.groupCollapsed(`[Radar] Entity snapshot · ${timestampLabel}`);
+
+                        const mobsSnapshot = snapshot.mobs || {};
+                        const visibleMobs = Array.isArray(mobsSnapshot.visible) ? mobsSnapshot.visible : [];
+                        const filteredLiving = Array.isArray(mobsSnapshot.filteredLiving) ? mobsSnapshot.filteredLiving : [];
+                        const mist = Array.isArray(mobsSnapshot.mist) ? mobsSnapshot.mist : [];
+
+                        if (visibleMobs.length === 0 && filteredLiving.length === 0 && mist.length === 0)
+                        {
+                                console.info("No mobs recorded in the latest snapshot.");
+                        }
+                        else
+                        {
+                                if (visibleMobs.length > 0)
+                                {
+                                        console.groupCollapsed(`Visible mobs (${visibleMobs.length})`);
+                                        console.table(visibleMobs);
+                                        console.groupEnd();
+                                }
+
+                                if (filteredLiving.length > 0)
+                                {
+                                        console.groupCollapsed(`Filtered living mobs (${filteredLiving.length})`);
+                                        console.table(filteredLiving);
+                                        console.groupEnd();
+                                }
+
+                                if (mist.length > 0)
+                                {
+                                        console.groupCollapsed(`Mist portals (${mist.length})`);
+                                        console.table(mist);
+                                        console.groupEnd();
+                                }
+                        }
+
+                        const harvestableSnapshot = snapshot.harvestables || {};
+                        const staticResources = Array.isArray(harvestableSnapshot.staticResources) ? harvestableSnapshot.staticResources : [];
+
+                        if (staticResources.length > 0)
+                        {
+                                console.groupCollapsed(`Static resources (${staticResources.length})`);
+                                console.table(staticResources);
+                                console.groupEnd();
+                        }
+                        else
+                        {
+                                console.info("No static resources recorded in the latest snapshot.");
+                        }
+
+                        console.groupEnd();
+                });
+        }
+
+        function returnLocalBool(item)
+        {
+                if (localStorage.getItem(item) == "true")
+                {
+                        return true;
 		}
 		else
 		{
