@@ -37,6 +37,108 @@ import { Settings } from './Settings.js';
 const settings = new Settings();
 
 
+const PACKET_HISTORY_LIMIT = 250;
+const packetHistory = [];
+const ENTITY_DEBUG_STORAGE_KEY = "radarEntityDebugSnapshot";
+const ENTITY_DEBUG_SYNC_DELAY = 200;
+const ENTITY_DEBUG_POLL_INTERVAL = 5000;
+const eventCodeLookup = Object.entries(EventCodes).reduce((accumulator, entry) =>
+{
+    const key = entry[0];
+    const value = entry[1];
+
+    accumulator[value] = key;
+
+    return accumulator;
+}, {});
+
+let entityDebugSnapshotDirty = false;
+let entityDebugSnapshotTimer = null;
+
+function recordPacketEntry(channel, dictionary)
+{
+    const payload = dictionary && typeof dictionary === "object" ? (dictionary.parameters ?? dictionary) : undefined;
+    const timestamp = Date.now();
+
+    let eventCode = null;
+    let entityId = null;
+
+    if (channel === "event" && Array.isArray(payload))
+    {
+        eventCode = payload[252];
+        entityId = payload[0];
+    }
+
+    packetHistory.push({
+        timestamp: timestamp,
+        channel: channel,
+        eventCode: eventCode,
+        eventName: eventCode != null ? (eventCodeLookup[eventCode] ?? null) : null,
+        entityId: entityId,
+        parameters: payload,
+    });
+
+    if (packetHistory.length > PACKET_HISTORY_LIMIT)
+        packetHistory.shift();
+}
+
+function logPacketHistory()
+{
+    console.groupCollapsed(`[Radar] Last ${packetHistory.length} packets`);
+
+    if (packetHistory.length === 0)
+    {
+        console.info("No packets captured yet.");
+        console.groupEnd();
+
+        return;
+    }
+
+    const summary = packetHistory.map((entry, index) =>
+    {
+        return {
+            index: index + 1,
+            time: new Date(entry.timestamp).toLocaleTimeString(),
+            channel: entry.channel,
+            eventCode: entry.eventCode ?? "",
+            eventName: entry.eventName ?? "",
+            entityId: entry.entityId ?? "",
+        };
+    });
+
+    console.table(summary);
+
+    for (const entry of packetHistory)
+    {
+        const labelParts = [];
+
+        labelParts.push(`[${new Date(entry.timestamp).toLocaleTimeString()}]`);
+        labelParts.push(entry.channel);
+
+        if (entry.eventName)
+            labelParts.push(entry.eventName);
+        else if (entry.eventCode != null)
+            labelParts.push(`Code ${entry.eventCode}`);
+
+        if (entry.entityId != null)
+            labelParts.push(`ID ${entry.entityId}`);
+
+        console.groupCollapsed(labelParts.join(" · "));
+        console.log(entry.parameters);
+        console.groupEnd();
+    }
+
+    console.groupEnd();
+}
+
+if (typeof window !== "undefined")
+{
+    window.radarDebug = window.radarDebug || {};
+    window.radarDebug.logPacketHistory = logPacketHistory;
+    window.radarDebug.getPacketHistory = () => [...packetHistory];
+}
+
+
 
 const harvestablesDrawing = new HarvestablesDrawing(settings);
 const dungeonsHandler = new DungeonsHandler(settings);
@@ -71,6 +173,146 @@ const dungeonsDrawing = new DungeonsDrawing(settings);
 playersDrawing.updateItemsInfo(itemsInfo.iteminfo);
 
 
+function buildEntityDebugSnapshot()
+{
+    return {
+        timestamp: Date.now(),
+        mobs: mobsHandler.getMobDebugSnapshot(),
+        harvestables: {
+            staticResources: harvestablesHandler.getHarvestableDebugSnapshot(),
+        },
+    };
+}
+
+function persistEntityDebugSnapshot(snapshot)
+{
+    if (typeof window === "undefined")
+        return;
+
+    window.radarDebug = window.radarDebug || {};
+    window.radarDebug.latestEntitySnapshot = snapshot;
+
+    try
+    {
+        window.localStorage.setItem(ENTITY_DEBUG_STORAGE_KEY, JSON.stringify(snapshot));
+    }
+    catch (error)
+    {
+        console.warn("[Radar] Failed to persist entity debug snapshot.", error);
+    }
+}
+
+function logEntitySnapshotToConsole(snapshot)
+{
+    if (!snapshot || typeof snapshot !== "object")
+    {
+        console.warn("[Radar] Entity debug snapshot is empty.");
+        return;
+    }
+
+    const timestampLabel = snapshot.timestamp ? new Date(snapshot.timestamp).toLocaleString() : "unknown";
+    console.groupCollapsed(`[Radar] Entity snapshot · ${timestampLabel}`);
+
+    const mobsSnapshot = snapshot.mobs || {};
+    const visibleMobs = Array.isArray(mobsSnapshot.visible) ? mobsSnapshot.visible : [];
+    const filteredLiving = Array.isArray(mobsSnapshot.filteredLiving) ? mobsSnapshot.filteredLiving : [];
+    const mist = Array.isArray(mobsSnapshot.mist) ? mobsSnapshot.mist : [];
+
+    if (visibleMobs.length === 0 && filteredLiving.length === 0 && mist.length === 0)
+    {
+        console.info("No mobs recorded in the latest snapshot.");
+    }
+    else
+    {
+        if (visibleMobs.length > 0)
+        {
+            console.groupCollapsed(`Visible mobs (${visibleMobs.length})`);
+            console.table(visibleMobs);
+            console.groupEnd();
+        }
+
+        if (filteredLiving.length > 0)
+        {
+            console.groupCollapsed(`Filtered living mobs (${filteredLiving.length})`);
+            console.table(filteredLiving);
+            console.groupEnd();
+        }
+
+        if (mist.length > 0)
+        {
+            console.groupCollapsed(`Mist portals (${mist.length})`);
+            console.table(mist);
+            console.groupEnd();
+        }
+    }
+
+    const harvestableSnapshot = snapshot.harvestables || {};
+    const staticResources = Array.isArray(harvestableSnapshot.staticResources) ? harvestableSnapshot.staticResources : [];
+
+    if (staticResources.length > 0)
+    {
+        console.groupCollapsed(`Static resources (${staticResources.length})`);
+        console.table(staticResources);
+        console.groupEnd();
+    }
+    else
+    {
+        console.info("No static resources recorded in the latest snapshot.");
+    }
+
+    console.groupEnd();
+}
+
+function syncEntityDebugSnapshotNow()
+{
+    const snapshot = buildEntityDebugSnapshot();
+    persistEntityDebugSnapshot(snapshot);
+    entityDebugSnapshotDirty = false;
+
+    return snapshot;
+}
+
+function markEntitySnapshotDirty()
+{
+    entityDebugSnapshotDirty = true;
+
+    if (typeof window === "undefined")
+        return;
+
+    if (entityDebugSnapshotTimer != null)
+        return;
+
+    entityDebugSnapshotTimer = window.setTimeout(() =>
+    {
+        entityDebugSnapshotTimer = null;
+
+        if (!entityDebugSnapshotDirty)
+            return;
+
+        entityDebugSnapshotDirty = false;
+        syncEntityDebugSnapshotNow();
+    }, ENTITY_DEBUG_SYNC_DELAY);
+}
+
+if (typeof window !== "undefined")
+{
+    window.radarDebug = window.radarDebug || {};
+    Object.assign(window.radarDebug, {
+        getEntityDebugSnapshot: () => buildEntityDebugSnapshot(),
+        syncEntityDebugSnapshot: () => syncEntityDebugSnapshotNow(),
+        logEntitySnapshot: () =>
+        {
+            const snapshot = syncEntityDebugSnapshotNow();
+            logEntitySnapshotToConsole(snapshot);
+            return snapshot;
+        },
+    });
+
+    syncEntityDebugSnapshotNow();
+    window.setInterval(() => syncEntityDebugSnapshotNow(), ENTITY_DEBUG_POLL_INTERVAL);
+}
+
+
 let lpX = 0.0;
 let lpY = 0.0;
 
@@ -83,7 +325,12 @@ drawingUtils.InitOurPlayerCanvas(canvasOurPlayer, contextOurPlayer);
 
 
 const socket = new WebSocket('ws://localhost:5002');
-      
+
+const logPacketHistoryButton = document.getElementById("logPacketHistory");
+
+if (logPacketHistoryButton)
+    logPacketHistoryButton.addEventListener("click", () => logPacketHistory());
+
 socket.addEventListener('open', (event) => {
   console.log('Connected to the WebSocket server.');
 
@@ -96,6 +343,8 @@ socket.addEventListener('message', (event) => {
   var extractedString = data.code;
 
   var extractedDictionary = JSON.parse(data.dictionary);
+
+  recordPacketEntry(extractedString, extractedDictionary);
 
   switch (extractedString)
   {
@@ -111,6 +360,8 @@ socket.addEventListener('message', (event) => {
         onResponse(extractedDictionary["parameters"]);
         break;
   }
+
+  markEntitySnapshotDirty();
 });
 
 
@@ -402,7 +653,9 @@ setInterval(drawItems, intervalItems);
 function checkLocalStorage()
 {
     settings.update(settings);
+    mobsHandler.syncVisibilityWithSettings();
     setDrawingViews();
+    markEntitySnapshotDirty();
 }
 
 const interval = 300;
@@ -423,6 +676,7 @@ function ClearHandlers()
     mobsHandler.Clear();
     playersHandler.Clear();
     wispCageHandler.CLear();
+    markEntitySnapshotDirty();
 }
 
 setDrawingViews();
