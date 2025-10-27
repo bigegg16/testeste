@@ -39,9 +39,12 @@ const settings = new Settings();
 
 const PACKET_HISTORY_LIMIT = 250;
 const packetHistory = [];
+ codex/review-radar-code-functionality-zv8vwi
 const ENTITY_DEBUG_STORAGE_KEY = "radarEntityDebugSnapshot";
 const ENTITY_DEBUG_SYNC_DELAY = 200;
 const ENTITY_DEBUG_POLL_INTERVAL = 5000;
+
+ main
 const eventCodeLookup = Object.entries(EventCodes).reduce((accumulator, entry) =>
 {
     const key = entry[0];
@@ -52,9 +55,12 @@ const eventCodeLookup = Object.entries(EventCodes).reduce((accumulator, entry) =
     return accumulator;
 }, {});
 
+ codex/review-radar-code-functionality-zv8vwi
 let entityDebugSnapshotDirty = false;
 let entityDebugSnapshotTimer = null;
 
+
+ main
 function recordPacketEntry(channel, dictionary)
 {
     const payload = dictionary && typeof dictionary === "object" ? (dictionary.parameters ?? dictionary) : undefined;
