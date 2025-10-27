@@ -178,6 +178,7 @@ class MobsHandler
 
         // TODO
         // List of enemies
+ codex/review-radar-code-functionality-0hwu8q
         const hasKnownMobInfo = this.mobinfo[typeId] != null;
         const resolvedMetadata = this.resolveMobMetadata(typeId, prefabInfo);
 
@@ -191,20 +192,88 @@ class MobsHandler
             h.tier = resolvedMetadata.tier;
 
         if (hasKnownMobInfo && this.isLivingMobType(h.type) && typeId == 397 && h.tier == 5 && rarity <= 1)
+
+        if (this.mobinfo[typeId] != null)
+main
         {
             h.tier = 1;
         }
 
         const isLiving = this.isLivingMob(h);
 
+ codex/review-radar-code-functionality-0hwu8q
         if (isLiving)
         {
             const fallbackEnchant = Math.max(0, h.rarity - 1);
             const normalizedFallback = this.normalizeEnchant(fallbackEnchant);
 
+            if (h.type == EnemyType.LivingSkinnable || h.type == EnemyType.LivingHarvestable)
+            {
+                // Living resources don't always populate the enchantment slot in the packet.
+                // When that happens the enchant level is encoded as rarity (1 => normal,
+                // 2 => uncommon, ...), so recover it from there to keep the filters aligned
+                // with what the player sees in game.
+                const fallbackEnchant = Math.max(0, h.rarity - 1);
+                const normalizedFallback = this.normalizeEnchant(fallbackEnchant);
+
+                if (normalizedFallback > h.enchantmentLevel)
+                {
+                    h.enchantmentLevel = normalizedFallback;
+                    enchant = normalizedFallback;
+                }
+            }
+
+            enchant = h.enchantmentLevel;
+
+            // Some living skinnable mobs reuse the same template id for different tiers.
+            // Template 397 should represent the T5 treasure terrorbird, but the game also
+            // spawns common rabbits with the very same type id. These rabbits are tier 1
+            // creatures with rarity 1, so correct their tier before applying the filters.
+            if (h.type == EnemyType.LivingSkinnable && typeId == 397 && h.tier == 5 && rarity <= 1)
+            {
+                h.tier = 1;
+            }
+
+            h.tier = this.normalizeTier(h.tier);
+            h.enchantmentLevel = this.normalizeEnchant(h.enchantmentLevel);
+
+            if (h.type == EnemyType.LivingSkinnable)
+            {
+                /*
+                   If animal is enchanted, it'll probably never work and jump into this return
+                   Because it's sending an event with normal animal with tier, ect
+                   And after send another event to say, this animal is enchant Y
+                   And it's the same with the other living harvestables
+                   But keep that in case it changes
+                */
+                   //console.log(parameters);
+                if (!this.shouldDisplayLivingMob(h))
+                {
+                    this.harvestablesNotGood.push(h);
+                    return;
+                }
+            }
+            else if (h.type == EnemyType.LivingHarvestable)
+            {
+                /*
+                   Same as animals comment before
+                */
+                if (!this.shouldDisplayLivingMob(h))
+                {
+                    this.harvestablesNotGood.push(h);
+                    return;
+                }
+            }
+            // Should do the work and handle all the enemies
+            else if (h.type >= EnemyType.Enemy && h.type <= EnemyType.Boss)
+            {
+                const offset = EnemyType.Enemy;
+ main
+
             if (normalizedFallback > h.enchantmentLevel)
                 h.enchantmentLevel = normalizedFallback;
 
+codex/review-radar-code-functionality-0hwu8q
             if (prefabInfo.tier != null)
                 h.tier = prefabInfo.tier;
 
@@ -254,6 +323,43 @@ class MobsHandler
             if (this.settings.showMinimumHealthEnemies && health < this.getMinimumHealthThreshold())
                 return;
         }
+
+                if (this.settings.showMinimumHealthEnemies && health < this.getMinimumHealthThreshold())
+                    return;
+            }
+            else if (h.type == EnemyType.Drone)
+            {
+                if (!this.settings.avaloneDrones) return;
+            }
+            else if (h.type == EnemyType.MistBoss)
+            {
+                if (h.name == "CRYSTALSPIDER" && !this.settings.bossCrystalSpider) return;
+                else if (h.name == "FAIRYDRAGON" && !this.settings.settingBossFairyDragon) return;
+                else if (h.name == "VEILWEAVER" && !this.settings.bossVeilWeaver) return;
+                else if (h.name == "GRIFFIN" && !this.settings.bossGriffin) return;
+            }
+            // Events
+            else if (h.type == EnemyType.Events)
+            {
+                if (!this.settings.showEventEnemies) return;
+            }
+            // Unmanaged type
+            else if (!this.settings.showUnmanagedEnemies) return;
+            else
+            {
+                if (this.settings.showMinimumHealthEnemies && health < this.getMinimumHealthThreshold())
+                    return;
+            }
+
+        }
+        // Unmanaged id
+        else if (!this.settings.showUnmanagedEnemies) return;
+        else if (this.settings.showMinimumHealthEnemies && health < this.getMinimumHealthThreshold())
+            return;
+
+        h.enchantmentLevel = this.normalizeEnchant(h.enchantmentLevel);
+        h.tier = this.normalizeTier(h.tier);
+ main
 
         if (!isLiving)
         {
@@ -472,6 +578,7 @@ class MobsHandler
         }
     }
 
+codex/review-radar-code-functionality-0hwu8q
     normalizeLivingResourceName(name, type)
     {
         if (type === EnemyType.LivingSkinnable)
@@ -497,6 +604,7 @@ class MobsHandler
         return type === EnemyType.LivingHarvestable ? "fiber" : "hide";
     }
 
+ main
     shouldDisplayLivingMob(mob)
     {
         const enchantLevel = this.normalizeEnchant(mob.enchantmentLevel);
@@ -516,11 +624,13 @@ class MobsHandler
             switch (resourceName)
             {
                 case "fiber":
+ codex/review-radar-code-functionality-0hwu8q
                 case "cotton":
                 case "silk":
                 case "flax":
                 case "hemp":
                 case "linen":
+ main
                     matrix = this.settings.harvestingLivingFiber?.[enchantKey];
                     break;
                 case "hide":
@@ -528,6 +638,7 @@ class MobsHandler
                     break;
                 case "logs":
                 case "log":
+ codex/review-radar-code-functionality-0hwu8q
                 case "wood":
                 case "tree":
                 case "timber":
@@ -543,6 +654,14 @@ class MobsHandler
                 case "stone":
                 case "basalt":
                 case "boulder":
+
+                    matrix = this.settings.harvestingLivingWood?.[enchantKey];
+                    break;
+                case "ore":
+                    matrix = this.settings.harvestingLivingOre?.[enchantKey];
+                    break;
+                case "rock":
+ main
                     matrix = this.settings.harvestingLivingRock?.[enchantKey];
                     break;
                 default:
@@ -562,11 +681,13 @@ class MobsHandler
         return mob.type === EnemyType.LivingSkinnable || mob.type === EnemyType.LivingHarvestable;
     }
 
+ codex/review-radar-code-functionality-0hwu8q
     isLivingMobType(type)
     {
         return type === EnemyType.LivingSkinnable || type === EnemyType.LivingHarvestable;
     }
 
+ main
     normalizeEnchant(value)
     {
         const numeric = Number(value);
@@ -672,6 +793,7 @@ class MobsHandler
 
         this.mobsList = nonLivingMobs.concat(visibleLiving);
         this.harvestablesNotGood = hiddenLiving;
+ codex/review-radar-code-functionality-0hwu8q
     }
 
     extractMobPrefabInfo(parameters)
@@ -818,5 +940,6 @@ class MobsHandler
             metadata.type = metadata.name === "hide" ? EnemyType.LivingSkinnable : EnemyType.LivingHarvestable;
 
         return metadata;
+ main
     }
 }
