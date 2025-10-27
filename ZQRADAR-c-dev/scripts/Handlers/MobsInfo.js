@@ -35,7 +35,7 @@ class MobsInfo{
 
         // Steppe biome treasure
         this.addItem(396, 4, EnemyType.LivingSkinnable, "hide"); // T4_MOB_TREASURE_HIDE_STEPPE_GIANTSTAG
-        this.addItem(397, 5, EnemyType.LivingSkinnable, "hide"); // T5_MOB_TREASURE_TERRORBIRD
+        this.addItem(397, 5, EnemyType.LivingSkinnable, "hide"); // T5_MOB_TREASURE_TERRORBIRD (shares id with rabbit spawns)
         this.addItem(398, 6, EnemyType.LivingSkinnable, "hide"); // T6_MOB_TREASURE_DESERTWOLF
         this.addItem(399, 7, EnemyType.LivingSkinnable, "hide"); // T7_MOB_TREASURE_RHINO
         this.addItem(400, 8, EnemyType.LivingSkinnable, "hide"); // T8_MOB_TREASURE_ANCIENTMAMMOTH
@@ -83,6 +83,7 @@ class MobsInfo{
         this.addItem(383, 4, EnemyType.LivingSkinnable, "hide"); // T4_MOB_TREASURE_HIDE_SWAMP_MONITORLIZARD
         this.addItem(384, 5, EnemyType.LivingSkinnable, "hide"); // T5_MOB_TREASURE_GIANTSNAKE
         this.addItem(385, 6, EnemyType.LivingSkinnable, "hide"); // T6_MOB_TREASURE_DRAGON
+        this.addItem(429, 6, EnemyType.LivingSkinnable, "hide"); // Alternate template id used by enchanted swamp dragons
 
         // Roads // TODO
         /*this.addItem(322, 1, EnemyType.LivingSkinnable, "hide"); // SALAMANDER

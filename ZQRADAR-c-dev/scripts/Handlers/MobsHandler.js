@@ -68,9 +68,15 @@ class MobsHandler
 
         this.harvestablesNotGood = [];
 
+        this.lastLivingFilterHash = this.computeLivingFilterHash();
+
         const logEnemiesList = document.getElementById("logEnemiesList");
         if (logEnemiesList)
-            logEnemiesList.addEventListener("click", () => console.log(this.mobsList));
+            logEnemiesList.addEventListener("click", () => this.logVisibleEntities());
+
+        const logHiddenLiving = document.getElementById("logHiddenLiving");
+        if (logHiddenLiving)
+            logHiddenLiving.addEventListener("click", () => this.logFilteredLiving());
     }
 
     updateMobInfo(newData)
@@ -80,7 +86,7 @@ class MobsHandler
 
     NewMobEvent(parameters)
     {
-        console.log(parameters)
+        console.debug(parameters);
 
         const id = parseInt(parameters[0]); // entity id
         let typeId = parseInt(parameters[1]); // real type id
@@ -119,9 +125,14 @@ class MobsHandler
         let enchant = 0;
         try
         {
-            enchant = parameters[33];
+            enchant = parseInt(parameters[33]);
         }
         catch (error)
+        {
+            enchant = 0;
+        }
+
+        if (Number.isNaN(enchant))
         {
             enchant = 0;
         }
@@ -132,6 +143,13 @@ class MobsHandler
             rarity = parseInt(parameters[19]);
         }
         catch (error)
+        {
+            rarity = 1;
+        }
+
+        // Photon packets omit parameter 19 for some critters (for example common rabbits).
+        // In that case parseInt returns NaN, so fall back to the default rarity.
+        if (Number.isNaN(rarity))
         {
             rarity = 1;
         }
@@ -156,116 +174,91 @@ class MobsHandler
             return;
 
         const h = new Mob(id, typeId, posX, posY, health, enchant, rarity);
+        const prefabInfo = this.extractMobPrefabInfo(parameters);
 
         // TODO
         // List of enemies
-        if (this.mobinfo[typeId] != null) 
+        const hasKnownMobInfo = this.mobinfo[typeId] != null;
+        const resolvedMetadata = this.resolveMobMetadata(typeId, prefabInfo);
+
+        if (resolvedMetadata.type != null)
+            h.type = resolvedMetadata.type;
+
+        if (resolvedMetadata.name != null)
+            h.name = resolvedMetadata.name;
+
+        if (resolvedMetadata.tier != null)
+            h.tier = resolvedMetadata.tier;
+
+        if (hasKnownMobInfo && this.isLivingMobType(h.type) && typeId == 397 && h.tier == 5 && rarity <= 1)
         {
-            const mobsInfo = this.mobinfo[typeId];
-
-            h.tier = mobsInfo[0];
-            h.type = mobsInfo[1];
-            h.name = mobsInfo[2];
-
-            if (h.type == EnemyType.LivingSkinnable)
-            {
-                /* 
-                   If animal is enchanted, it'll probably never work and jump into this return
-                   Because it's sending an event with normal animal with tier, ect
-                   And after send another event to say, this animal is enchant Y
-                   And it's the same with the other living harvestables
-                   But keep that in case it changes
-                */
-                   //console.log(parameters);
-                
-                if (!this.settings.harvestingLivingHide[`e${enchant}`][h.tier-1])
-                {
-                    this.harvestablesNotGood.push(h);
-                    return;
-                }
-
-                
-            }
-            else if (h.type == EnemyType.LivingHarvestable)
-            {
-                /* 
-                   Same as animals comment before
-                */
-                let iG = true;
-
-                switch (h.name) {
-                    case "fiber":
-                        if (!this.settings.harvestingLivingFiber[`e${enchant}`][h.tier-1]) iG = false;
-                        break;
-
-                    case "hide":
-                        if (!this.settings.harvestingLivingHide[`e${enchant}`][h.tier-1]) iG = false;
-                        break;
-
-                    case "Logs":
-                        if (!this.settings.harvestingLivingWood[`e${enchant}`][h.tier-1]) iG = false;
-                        break;
-
-                    case "ore":
-                        if (!this.settings.harvestingLivingOre[`e${enchant}`][h.tier-1]) iG = false;
-                        break;
-                    
-                    case "rock":
-                        if (!this.settings.harvestingLivingRock[`e${enchant}`][h.tier-1]) iG = false;
-                        break;
-                
-                    default:
-                        break;
-                }
-
-                if (!iG)
-                {
-                    this.harvestablesNotGood.push(h);
-                    return;
-                }
-            }
-            // Should do the work and handle all the enemies
-            else if (h.type >= EnemyType.Enemy && h.type <= EnemyType.Boss)
-            {
-                const offset = EnemyType.Enemy;
-
-                if (!this.settings.enemyLevels[h.type - offset])
-                    return;
-
-                if (this.settings.showMinimumHealthEnemies && health < this.settings.minimumHealthEnemies)
-                    return;
-            }
-            else if (h.type == EnemyType.Drone)
-            {
-                if (!this.settings.avaloneDrones) return;
-            }
-            else if (h.type == EnemyType.MistBoss)
-            {
-                if (h.name == "CRYSTALSPIDER" && !this.settings.bossCrystalSpider) return;
-                else if (h.name == "FAIRYDRAGON" && !this.settings.settingBossFairyDragon) return;
-                else if (h.name == "VEILWEAVER" && !this.settings.bossVeilWeaver) return;
-                else if (h.name == "GRIFFIN" && !this.settings.bossGriffin) return;
-            }
-            // Events
-            else if (h.type == EnemyType.Events)
-            {
-                if (!this.settings.showEventEnemies) return;
-            }
-            // Unmanaged type
-            else if (!this.settings.showUnmanagedEnemies) return;
-            else
-            {
-                if (this.settings.showMinimumHealthEnemies && health < this.settings.minimumHealthEnemies)
-                    return;
-            }
-            
+            h.tier = 1;
         }
-        // Unmanaged id
-        else if (!this.settings.showUnmanagedEnemies) return;
+
+        const isLiving = this.isLivingMob(h);
+
+        if (isLiving)
+        {
+            const fallbackEnchant = Math.max(0, h.rarity - 1);
+            const normalizedFallback = this.normalizeEnchant(fallbackEnchant);
+
+            if (normalizedFallback > h.enchantmentLevel)
+                h.enchantmentLevel = normalizedFallback;
+
+            if (prefabInfo.tier != null)
+                h.tier = prefabInfo.tier;
+
+            if (prefabInfo.resourceName != null)
+                h.name = prefabInfo.resourceName;
+
+            h.tier = this.normalizeTier(h.tier);
+            h.enchantmentLevel = this.normalizeEnchant(h.enchantmentLevel);
+
+            if (!this.shouldDisplayLivingMob(h))
+            {
+                this.harvestablesNotGood.push(h);
+                return;
+            }
+        }
+        else if (h.type >= EnemyType.Enemy && h.type <= EnemyType.Boss)
+        {
+            if (!hasKnownMobInfo && !this.settings.showUnmanagedEnemies)
+                return;
+
+            const offset = EnemyType.Enemy;
+
+            if (!this.settings.enemyLevels[h.type - offset])
+                return;
+
+            if (this.settings.showMinimumHealthEnemies && health < this.getMinimumHealthThreshold())
+                return;
+        }
+        else if (h.type == EnemyType.Drone)
+        {
+            if (!this.settings.avaloneDrones) return;
+        }
+        else if (h.type == EnemyType.MistBoss)
+        {
+            if (h.name == "CRYSTALSPIDER" && !this.settings.bossCrystalSpider) return;
+            else if (h.name == "FAIRYDRAGON" && !this.settings.settingBossFairyDragon) return;
+            else if (h.name == "VEILWEAVER" && !this.settings.bossVeilWeaver) return;
+            else if (h.name == "GRIFFIN" && !this.settings.bossGriffin) return;
+        }
+        else if (h.type == EnemyType.Events)
+        {
+            if (!this.settings.showEventEnemies) return;
+        }
+        else if (!hasKnownMobInfo && !this.settings.showUnmanagedEnemies) return;
         else
         {
-            if (this.settings.showMinimumHealthEnemies && health < this.settings.minimumHealthEnemies)
+            if (this.settings.showMinimumHealthEnemies && health < this.getMinimumHealthThreshold())
                 return;
+        }
+
+        if (!isLiving)
+        {
+            h.enchantmentLevel = this.normalizeEnchant(h.enchantmentLevel);
+            h.tier = this.normalizeTier(h.tier);
         }
 
         this.mobsList.push(h);
@@ -314,7 +307,15 @@ class MobsHandler
 
         if (enemy)
         {
-            enemy.enchantmentLevel = enchantmentLevel;
+            enemy.enchantmentLevel = this.normalizeEnchant(enchantmentLevel);
+
+            if (this.isLivingMob(enemy) && !this.shouldDisplayLivingMob(enemy))
+            {
+                if (!this.harvestablesNotGood.some((mob) => mob.id === enemy.id))
+                    this.harvestablesNotGood.push(enemy);
+                this.mobsList = this.mobsList.filter((mob) => mob.id !== enemy.id);
+            }
+
             return;
         }
 
@@ -323,61 +324,10 @@ class MobsHandler
 
         if (!enemy) return;
 
-        enemy.enchantmentLevel = enchantmentLevel;
+        enemy.enchantmentLevel = this.normalizeEnchant(enchantmentLevel);
 
-        let hasToSwapFromList = false;
-
-        if (enemy.type == EnemyType.LivingSkinnable)
-        {
-            if (!this.settings.harvestingLivingHide[`e${enemy.enchantmentLevel}`][enemy.tier-1])
-                return;
-
-            hasToSwapFromList = true;
-        }
-        else if (enemy.type == EnemyType.LivingHarvestable)
-        {
-            switch (enemy.name) {
-                case "fiber":
-                    if (!this.settings.harvestingLivingFiber[`e${enemy.enchantmentLevel}`][enemy.tier-1])
-                        return;
-
-                    hasToSwapFromList = true;
-                    break;
-
-                case "hide":
-                    if (!this.settings.harvestingLivingHide[`e${enemy.enchantmentLevel}`][enemy.tier-1])
-                        return;
-
-                    hasToSwapFromList = true;
-                    break;
-
-                case "Logs":
-                    if (!this.settings.harvestingLivingWood[`e${enemy.enchantmentLevel}`][enemy.tier-1])
-                        return;
-
-                    hasToSwapFromList = true;
-                    break;
-
-                case "ore":
-                    if (!this.settings.harvestingLivingOre[`e${enemy.enchantmentLevel}`][enemy.tier-1])
-                        return;
-
-                    hasToSwapFromList = true;
-                    break;
-                
-                case "rock":
-                    if (!this.settings.harvestingLivingRock[`e${enemy.enchantmentLevel}`][enemy.tier-1])
-                        return;
-
-                    hasToSwapFromList = true;
-                    break;
-            
-                default:
-                    break;
-            }
-        }
-
-        if (!hasToSwapFromList) return;
+        if (!this.shouldDisplayLivingMob(enemy))
+            return;
 
         this.mobsList.push(enemy);
         this.harvestablesNotGood = this.harvestablesNotGood.filter((x) => x.id !== enemy.id);
@@ -428,5 +378,386 @@ class MobsHandler
         this.mobsList = [];
         this.mistList = [];
         this.harvestablesNotGood = [];
+        this.lastLivingFilterHash = this.computeLivingFilterHash();
+    }
+
+    logVisibleEntities()
+    {
+        console.groupCollapsed("[Radar] Visible mobs");
+
+        if (this.mobsList.length === 0)
+        {
+            console.info("No mobs currently tracked.");
+        }
+        else
+        {
+            console.table(this.mobsList.map((mob) => this.describeMobForLog(mob)));
+        }
+
+        if (this.mistList.length > 0)
+        {
+            console.groupCollapsed("Mist portals");
+            console.table(this.mistList.map((mist) => ({
+                id: mist.id,
+                name: mist.name,
+                enchant: mist.enchant,
+                type: mist.type === 0 ? "Solo" : "Duo",
+                posX: mist.posX,
+                posY: mist.posY,
+            })));
+            console.groupEnd();
+        }
+
+        console.groupEnd();
+    }
+
+    logFilteredLiving()
+    {
+        console.groupCollapsed("[Radar] Living resources filtered by settings");
+
+        if (this.harvestablesNotGood.length === 0)
+        {
+            console.info("No living mobs are currently filtered out.");
+        }
+        else
+        {
+            console.table(this.harvestablesNotGood.map((mob) => this.describeMobForLog(mob)));
+        }
+
+        console.groupEnd();
+    }
+
+    describeMobForLog(mob)
+    {
+        return {
+            id: mob.id,
+            typeId: mob.typeId,
+            name: mob.name,
+            type: this.describeMobType(mob.type),
+            tier: mob.tier,
+            enchant: mob.enchantmentLevel,
+            rarity: mob.rarity,
+            health: mob.health,
+            posX: mob.posX,
+            posY: mob.posY,
+        };
+    }
+
+    describeMobType(type)
+    {
+        switch (type)
+        {
+            case EnemyType.LivingHarvestable:
+                return "Living Harvestable";
+            case EnemyType.LivingSkinnable:
+                return "Living Skinnable";
+            case EnemyType.Enemy:
+                return "Enemy";
+            case EnemyType.MediumEnemy:
+                return "Medium Enemy";
+            case EnemyType.EnchantedEnemy:
+                return "Enchanted Enemy";
+            case EnemyType.MiniBoss:
+                return "Mini Boss";
+            case EnemyType.Boss:
+                return "Boss";
+            case EnemyType.Drone:
+                return "Drone";
+            case EnemyType.MistBoss:
+                return "Mist Boss";
+            case EnemyType.Events:
+                return "Event";
+            default:
+                return "Unmanaged";
+        }
+    }
+
+    shouldDisplayLivingMob(mob)
+    {
+        const enchantLevel = this.normalizeEnchant(mob.enchantmentLevel);
+        const tier = this.normalizeTier(mob.tier) - 1;
+
+        const enchantKey = `e${enchantLevel}`;
+        let matrix;
+
+        if (mob.type == EnemyType.LivingSkinnable)
+        {
+            matrix = this.settings.harvestingLivingHide?.[enchantKey];
+        }
+        else
+        {
+            const resourceName = typeof mob.name === "string" ? mob.name.toLowerCase() : "";
+
+            switch (resourceName)
+            {
+                case "fiber":
+                    matrix = this.settings.harvestingLivingFiber?.[enchantKey];
+                    break;
+                case "hide":
+                    matrix = this.settings.harvestingLivingHide?.[enchantKey];
+                    break;
+                case "logs":
+                case "log":
+                    matrix = this.settings.harvestingLivingWood?.[enchantKey];
+                    break;
+                case "ore":
+                    matrix = this.settings.harvestingLivingOre?.[enchantKey];
+                    break;
+                case "rock":
+                    matrix = this.settings.harvestingLivingRock?.[enchantKey];
+                    break;
+                default:
+                    matrix = undefined;
+                    break;
+            }
+        }
+
+        if (!Array.isArray(matrix))
+            return false;
+
+        return Boolean(matrix[tier]);
+    }
+
+    isLivingMob(mob)
+    {
+        return mob.type === EnemyType.LivingSkinnable || mob.type === EnemyType.LivingHarvestable;
+    }
+
+    isLivingMobType(type)
+    {
+        return type === EnemyType.LivingSkinnable || type === EnemyType.LivingHarvestable;
+    }
+
+    normalizeEnchant(value)
+    {
+        const numeric = Number(value);
+
+        if (!Number.isFinite(numeric))
+            return 0;
+
+        return Math.min(Math.max(Math.floor(numeric), 0), 4);
+    }
+
+    normalizeTier(value)
+    {
+        const numeric = Number(value);
+
+        if (!Number.isFinite(numeric))
+            return 1;
+
+        return Math.min(Math.max(Math.floor(numeric), 1), 8);
+    }
+
+    getMinimumHealthThreshold()
+    {
+        const numeric = Number(this.settings.minimumHealthEnemies);
+
+        if (!Number.isFinite(numeric))
+            return 0;
+
+        return numeric;
+    }
+
+    computeLivingFilterHash()
+    {
+        const matrices = [
+            this.settings.harvestingLivingHide,
+            this.settings.harvestingLivingFiber,
+            this.settings.harvestingLivingWood,
+            this.settings.harvestingLivingOre,
+            this.settings.harvestingLivingRock,
+        ];
+
+        return matrices
+            .map((matrix) => this.serializeMatrix(matrix))
+            .join("|");
+    }
+
+    serializeMatrix(matrix)
+    {
+        if (!matrix || typeof matrix !== "object")
+            return "";
+
+        const keys = Object.keys(matrix).sort();
+
+        return keys
+            .map((key) => {
+                const row = Array.isArray(matrix[key]) ? matrix[key] : [];
+                return `${key}:${row.map((value) => (value ? 1 : 0)).join("")}`;
+            })
+            .join(",");
+    }
+
+    syncVisibilityWithSettings()
+    {
+        const livingFilterHash = this.computeLivingFilterHash();
+
+        if (livingFilterHash === this.lastLivingFilterHash)
+            return;
+
+        this.lastLivingFilterHash = livingFilterHash;
+
+        const livingMobs = new Map();
+
+        for (const mob of this.mobsList)
+        {
+            if (this.isLivingMob(mob))
+            {
+                livingMobs.set(mob.id, mob);
+            }
+        }
+
+        for (const mob of this.harvestablesNotGood)
+        {
+            livingMobs.set(mob.id, mob);
+        }
+
+        const nonLivingMobs = this.mobsList.filter((mob) => !this.isLivingMob(mob));
+        const visibleLiving = [];
+        const hiddenLiving = [];
+
+        for (const mob of livingMobs.values())
+        {
+            mob.enchantmentLevel = this.normalizeEnchant(mob.enchantmentLevel);
+            mob.tier = this.normalizeTier(mob.tier);
+
+            if (this.shouldDisplayLivingMob(mob))
+            {
+                visibleLiving.push(mob);
+            }
+            else
+            {
+                hiddenLiving.push(mob);
+            }
+        }
+
+        this.mobsList = nonLivingMobs.concat(visibleLiving);
+        this.harvestablesNotGood = hiddenLiving;
+    }
+
+    extractMobPrefabInfo(parameters)
+    {
+        const info = {
+            tier: null,
+            resourceName: null,
+            type: null,
+        };
+
+        const stack = [parameters];
+        const visited = new Set();
+
+        while (stack.length > 0)
+        {
+            const current = stack.pop();
+
+            if (current === null || current === undefined)
+                continue;
+
+            if (typeof current === "string")
+            {
+                this.updatePrefabInfoFromString(current, info);
+                continue;
+            }
+
+            if (typeof current !== "object")
+                continue;
+
+            if (visited.has(current))
+                continue;
+
+            visited.add(current);
+
+            if (Array.isArray(current))
+            {
+                for (const value of current)
+                    stack.push(value);
+                continue;
+            }
+
+            if (typeof ArrayBuffer !== "undefined")
+            {
+                if (current instanceof ArrayBuffer)
+                    continue;
+
+                if (typeof ArrayBuffer.isView === "function" && ArrayBuffer.isView(current))
+                    continue;
+            }
+
+            for (const key of Object.keys(current))
+                stack.push(current[key]);
+        }
+
+        if (info.tier != null)
+            info.tier = this.normalizeTier(info.tier);
+
+        return info;
+    }
+
+    updatePrefabInfoFromString(text, info)
+    {
+        if (typeof text !== "string" || text.length === 0)
+            return;
+
+        if (info.tier == null)
+        {
+            const tierMatch = text.match(/T([1-8])_/i);
+
+            if (tierMatch)
+                info.tier = parseInt(tierMatch[1], 10);
+        }
+
+        const lowered = text.toLowerCase();
+
+        if (info.type == null)
+        {
+            if (lowered.includes("critter_hide"))
+                info.type = EnemyType.LivingSkinnable;
+            else if (lowered.includes("critter_fiber") || lowered.includes("critter_log") || lowered.includes("critter_wood") || lowered.includes("critter_ore") || lowered.includes("critter_rock"))
+                info.type = EnemyType.LivingHarvestable;
+        }
+
+        if (info.resourceName == null)
+        {
+            if (lowered.includes("hide"))
+                info.resourceName = "hide";
+            else if (lowered.includes("fiber"))
+                info.resourceName = "fiber";
+            else if (lowered.includes("wood") || lowered.includes("log"))
+                info.resourceName = "Logs";
+            else if (lowered.includes("ore"))
+                info.resourceName = "ore";
+            else if (lowered.includes("rock") || lowered.includes("stone"))
+                info.resourceName = "rock";
+        }
+    }
+
+    resolveMobMetadata(typeId, prefabInfo)
+    {
+        const info = this.mobinfo[typeId];
+        const metadata = {
+            tier: info ? info[0] : null,
+            type: info ? info[1] : null,
+            name: info ? info[2] : null,
+        };
+
+        if (prefabInfo.type != null)
+        {
+            if (metadata.type == null || (this.isLivingMobType(prefabInfo.type) && !this.isLivingMobType(metadata.type)))
+                metadata.type = prefabInfo.type;
+        }
+
+        if (prefabInfo.resourceName != null)
+        {
+            if (metadata.type == null || this.isLivingMobType(metadata.type))
+                metadata.name = prefabInfo.resourceName;
+        }
+
+        if (prefabInfo.tier != null)
+        {
+            if (metadata.type == null || this.isLivingMobType(metadata.type))
+                metadata.tier = prefabInfo.tier;
+        }
+
+        return metadata;
     }
 }

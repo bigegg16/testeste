@@ -402,6 +402,7 @@ setInterval(drawItems, intervalItems);
 function checkLocalStorage()
 {
     settings.update(settings);
+    mobsHandler.syncVisibilityWithSettings();
     setDrawingViews();
 }
 

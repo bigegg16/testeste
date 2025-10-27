@@ -43,10 +43,16 @@
             left: 520px; /* Adjust the left position to be to the right of the canvases */
         }
 
+        #logHiddenLiving {
+            position: absolute;
+            top: 90px;
+            left: 520px;
+        }
+
         #launchItems
         {
             position: absolute;
-            top: 90px;
+            top: 130px;
             left: 520px; /* Adjust the left position to be to the right of the canvases */
         }
 
@@ -75,7 +81,8 @@
         <canvas class="ttcan" id="ourPlayerCanvas" width="500" height="500"></canvas>
         <canvas id="thirdCanvas" width="500" height="500" ></canvas>
         <button class="button" id="button">Clear</button>
-        <button class="button" id="logEnemiesList">Log Enemies List</button>
+        <button class="button" id="logEnemiesList">Log Visible Entities</button>
+        <button class="button" id="logHiddenLiving">Log Filtered Living</button>
         <button class="button" id="launchItems" onclick="window.open('/items');" >Open Items Window</button>
     </div>
 
